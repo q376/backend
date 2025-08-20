@@ -1,0 +1,70 @@
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import create_engine, Column, Integer, String, BigInteger
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+import os
+
+# URL подключения к Postgres (заменишь на свой с Render/Neon)
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@host:5432/dbname")
+
+# SQLAlchemy setup
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+Base = declarative_base()
+
+# Таблица Users
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    telegram_id = Column(BigInteger, unique=True, index=True, nullable=False)
+    username = Column(String, nullable=True)
+    wallet = Column(String, nullable=True)
+
+# Создаём таблицы
+Base.metadata.create_all(bind=engine)
+
+# FastAPI app
+app = FastAPI()
+
+# Pydantic schema
+class UserCreate(BaseModel):
+    telegram_id: int
+    username: str | None = None
+    wallet: str | None = None
+
+@app.post("/register")
+def register(user: UserCreate):
+    db = SessionLocal()
+    existing = db.query(User).filter(User.telegram_id == user.telegram_id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="User already exists")
+    new_user = User(
+        telegram_id=user.telegram_id,
+        username=user.username,
+        wallet=user.wallet
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    db.close()
+    return {"message": "User registered", "user": {
+        "id": new_user.id,
+        "telegram_id": new_user.telegram_id,
+        "username": new_user.username,
+        "wallet": new_user.wallet
+    }}
+
+@app.get("/user/{telegram_id}")
+def get_user(telegram_id: int):
+    db = SessionLocal()
+    user = db.query(User).filter(User.telegram_id == telegram_id).first()
+    db.close()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "id": user.id,
+        "telegram_id": user.telegram_id,
+        "username": user.username,
+        "wallet": user.wallet
+    }
