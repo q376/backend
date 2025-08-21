@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 import os
 
 # URL подключения к Postgres (заменишь на свой с Render/Neon)
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@host:5432/dbname")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # SQLAlchemy setup
 engine = create_engine(DATABASE_URL)
@@ -68,3 +68,4 @@ def get_user(telegram_id: int):
         "username": user.username,
         "wallet": user.wallet
     }
+
