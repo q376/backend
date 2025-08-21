@@ -69,3 +69,13 @@ def get_user(telegram_id: int):
         "wallet": user.wallet
     }
 
+
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # или конкретный URL фронта
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
