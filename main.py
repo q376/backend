@@ -49,12 +49,12 @@ def register(user: UserCreate):
         raise HTTPException(status_code=400, detail="User already exists")
 
     new_user = User(
-        telegram_id=user.telegram_id,
+        telegram_id=user.id,
         username=user.username,
         wallet=user.wallet,
         first_name=user.first_name,
         last_name=user.last_name,
-        avatar_url=user.avatar_url
+        photo_url=user.photo_url
     )
     db.add(new_user)
     db.commit()
@@ -70,7 +70,7 @@ def register(user: UserCreate):
             "wallet": new_user.wallet,
             "first_name": new_user.first_name,
             "last_name": new_user.last_name,
-            "avatar_url": new_user.avatar_url
+            "photo_url": new_user.photo_url
         }
     }
 '''
@@ -137,4 +137,5 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
