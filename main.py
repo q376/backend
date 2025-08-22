@@ -20,6 +20,10 @@ class User(Base):
     telegram_id = Column(BigInteger, unique=True, index=True, nullable=False)
     username = Column(String, nullable=True)
     wallet = Column(String, nullable=True)
+    # new
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
+    photo_url = Column(String, nullable=True)
 
 # Создаём таблицы
 Base.metadata.create_all(bind=engine)
@@ -32,8 +36,44 @@ class UserCreate(BaseModel):
     telegram_id: int
     username: str | None = None
     wallet: str | None = None
+    # new
+    first_name: str | None
+    last_name: str | None
+    photo_url: str | None
 
 @app.post("/register")
+def register(user: UserCreate):
+    db = SessionLocal()
+    existing = db.query(User).filter(User.telegram_id == user.telegram_id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="User already exists")
+
+    new_user = User(
+        telegram_id=user.telegram_id,
+        username=user.username,
+        wallet=user.wallet,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        avatar_url=user.avatar_url
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    db.close()
+
+    return {
+        "message": "User registered",
+        "user": {
+            "id": new_user.id,
+            "telegram_id": new_user.telegram_id,
+            "username": new_user.username,
+            "wallet": new_user.wallet,
+            "first_name": new_user.first_name,
+            "last_name": new_user.last_name,
+            "avatar_url": new_user.avatar_url
+        }
+    }
+'''
 def register(user: UserCreate):
     db = SessionLocal()
     existing = db.query(User).filter(User.telegram_id == user.telegram_id).first()
@@ -53,9 +93,27 @@ def register(user: UserCreate):
         "telegram_id": new_user.telegram_id,
         "username": new_user.username,
         "wallet": new_user.wallet
-    }}
+    }}'''
 
 @app.get("/user/{telegram_id}")
+def get_user(telegram_id: int):
+    db = SessionLocal()
+    user = db.query(User).filter(User.telegram_id == telegram_id).first()
+    db.close()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {
+        "id": user.id,
+        "telegram_id": user.telegram_id,
+        "username": user.username,
+        "wallet": user.wallet,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "avatar_url": user.avatar_url
+    }
+
+'''
 def get_user(telegram_id: int):
     db = SessionLocal()
     user = db.query(User).filter(User.telegram_id == telegram_id).first()
@@ -68,7 +126,7 @@ def get_user(telegram_id: int):
         "username": user.username,
         "wallet": user.wallet
     }
-
+'''
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -79,3 +137,4 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
