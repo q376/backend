@@ -74,28 +74,6 @@ def register(user: UserCreate):
         }
     }
 
-'''
-def register(user: UserCreate):
-    db = SessionLocal()
-    existing = db.query(User).filter(User.telegram_id == user.telegram_id).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="User already exists")
-    new_user = User(
-        telegram_id=user.telegram_id,
-        username=user.username,
-        wallet=user.wallet
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    db.close()
-    return {"message": "User registered", "user": {
-        "id": new_user.id,
-        "telegram_id": new_user.telegram_id,
-        "username": new_user.username,
-        "wallet": new_user.wallet
-    }}'''
-
 @app.get("/user/{telegram_id}")
 def get_user(telegram_id: int):
     db = SessionLocal()
@@ -113,22 +91,23 @@ def get_user(telegram_id: int):
         "last_name": user.last_name,
         "photo_url": user.photo_url  # заменил avatar_url → photo_url
     }
-
-'''
-def get_user(telegram_id: int):
+#< !
+@app.get("/session/{telegram_id}")
+def check_session(telegram_id: int):
     db = SessionLocal()
     user = db.query(User).filter(User.telegram_id == telegram_id).first()
     db.close()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return {
-        "id": user.id,
         "telegram_id": user.telegram_id,
         "username": user.username,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "photo_url": user.photo_url,
         "wallet": user.wallet
     }
-'''
-
+#! >
 from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
@@ -138,6 +117,3 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-
