@@ -91,7 +91,7 @@ def get_user(telegram_id: int):
         "last_name": user.last_name,
         "photo_url": user.photo_url  # заменил avatar_url → photo_url
     }
-#< !
+'''#< !
 @app.get("/session/{telegram_id}")
 def check_session(telegram_id: int):
     db = SessionLocal()
@@ -107,7 +107,7 @@ def check_session(telegram_id: int):
         "photo_url": user.photo_url,
         "wallet": user.wallet
     }
-#! >
+#! >'''
 from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
@@ -117,3 +117,4 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
