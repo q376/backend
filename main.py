@@ -8,6 +8,9 @@ import os
 from fastapi import Request, Response
 import jwt, datetime
 
+# FastAPI app
+app = FastAPI()
+
 # Render database URL
 DATABASE_URL = os.getenv("DATABASE_URL")
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -59,9 +62,6 @@ class User(Base):
 
 # Creating the tables
 Base.metadata.create_all(bind=engine)
-
-# FastAPI app
-app = FastAPI()
 
 # Pydantic schema
 class UserCreate(BaseModel):
@@ -149,3 +149,4 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
