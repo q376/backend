@@ -112,7 +112,7 @@ def telegram_login(user: UserTelegram, response: Response):
     response.set_cookie(
         key="session_token",
         value=token,
-        httponly=False,
+        httponly=True,
         samesite="lax",
         max_age=7*24*60*60  # 7 дней
     )
@@ -260,4 +260,5 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
