@@ -4,28 +4,60 @@ from sqlalchemy import create_engine, Column, Integer, String, BigInteger
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
+# for session keys
+from fastapi import Request, Response
+import jwt, datetime
 
-# URL подключения к Postgres (заменишь на свой с Render/Neon)
+# Render database URL
 DATABASE_URL = os.getenv("DATABASE_URL")
+SECRET_KEY = os.getenv("SECRET_KEY")
+
+@app.get("/auth/check")
+def auth_check(request: Request):
+    token = request.cookies.get("session_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        telegram_id = payload["telegram_id"]
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Session expired")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = db.query(User).filter(User.telegram_id == telegram_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "telegram_id": user.telegram_id,
+        "username": user.username,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "photo_url": user.photo_url
+    }
+
+@app.post("/logout")
+def logout(response: Response):
+    response.delete_cookie("session_token")
+    return {"message": "Logged out"}
 
 # SQLAlchemy setup
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 
-# Таблица Users
+# Table - Users
 class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    telegram_id = Column(BigInteger, unique=True, index=True, nullable=False)
-    username = Column(String, nullable=True)
-    wallet = Column(String, nullable=True)
-    # new
-    first_name = Column(String, nullable=True)
-    last_name = Column(String, nullable=True)
-    photo_url = Column(String, nullable=True)
+    __tablename__ = "users" # name of the table
+    id = Column(Integer, primary_key=True, index=True) # SQL identification (unique)
+    telegram_id = Column(BigInteger, unique=True, index=True, nullable=False) # TELEGRAM ID (unique)
+    username = Column(String, nullable=True) # TELEGRAM username (unique (?)) 
+    wallet = Column(String, nullable=True) # TON wallet
+    first_name = Column(String, nullable=True) # TELEGRAM first name
+    last_name = Column(String, nullable=True) # TELEGRAM last name - surname
+    photo_url = Column(String, nullable=True) # TELEGRAM user photo/avatar/pfp 
 
-# Создаём таблицы
+# Creating the tables
 Base.metadata.create_all(bind=engine)
 
 # FastAPI app
@@ -54,7 +86,7 @@ def register(user: UserCreate):
         wallet=user.wallet,
         first_name=user.first_name,
         last_name=user.last_name,
-        photo_url=user.photo_url  # заменил avatar_url → photo_url
+        photo_url=user.photo_url  # changed avatar_url -> photo_url
     )
     db.add(new_user)
     db.commit()
@@ -70,7 +102,7 @@ def register(user: UserCreate):
             "wallet": new_user.wallet,
             "first_name": new_user.first_name,
             "last_name": new_user.last_name,
-            "photo_url": new_user.photo_url  # заменил avatar_url → photo_url
+            "photo_url": new_user.photo_url  # changed avatar_url -> photo_url
         }
     }
 
@@ -89,7 +121,7 @@ def get_user(telegram_id: int):
         "wallet": user.wallet,
         "first_name": user.first_name,
         "last_name": user.last_name,
-        "photo_url": user.photo_url  # заменил avatar_url → photo_url
+        "photo_url": user.photo_url  # changed avatar_url -> photo_url
     }
 '''#< !
 @app.get("/session/{telegram_id}")
@@ -117,4 +149,3 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
