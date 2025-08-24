@@ -128,6 +128,7 @@ def telegram_login(user: UserTelegram, response: Response):
             "wallet": user_db.wallet
         }
     }
+    print("Token:", token)
 
 # -------------------
 # Эндпоинт для проверки сессии
@@ -260,5 +261,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
