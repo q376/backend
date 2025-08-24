@@ -73,16 +73,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# -------------------
-# Эндпоинт Telegram login
-# -------------------
+# -----------------------
+# Login / регистрация
+# -----------------------
 @app.post("/auth/telegram")
 def telegram_login(user: UserTelegram, response: Response):
     db = SessionLocal()
     existing_user = db.query(User).filter(User.telegram_id == user.telegram_id).first()
     
     if not existing_user:
-        # Регистрация нового пользователя
         new_user = User(
             telegram_id=user.telegram_id,
             username=user.username,
@@ -97,48 +96,41 @@ def telegram_login(user: UserTelegram, response: Response):
         db.close()
         user_db = new_user
     else:
-        # Пользователь уже есть
         user_db = existing_user
         db.close()
     
-    # Создаём JWT
+    # JWT
     payload = {
         "telegram_id": user_db.telegram_id,
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)  # срок жизни токена
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     
-    # Кладём в cookie
     response.set_cookie(
         key="session_token",
         value=token,
         httponly=True,
         samesite="lax",
-        max_age=7*24*60*60  # 7 дней
+        max_age=7*24*60*60
     )
     
-    return {
-        "message": "Login successful",
-        "user": {
-            "telegram_id": user_db.telegram_id,
-            "username": user_db.username,
-            "first_name": user_db.first_name,
-            "last_name": user_db.last_name,
-            "photo_url": user_db.photo_url,
-            "wallet": user_db.wallet
-        }
-    }
-    print("Token:", token)
+    return {"message": "Login successful", "user": {
+        "telegram_id": user_db.telegram_id,
+        "username": user_db.username,
+        "first_name": user_db.first_name,
+        "last_name": user_db.last_name,
+        "photo_url": user_db.photo_url,
+        "wallet": user_db.wallet
+    }}
 
-# -------------------
-# Эндпоинт для проверки сессии
-# -------------------
+# -----------------------
+# Проверка сессии
+# -----------------------
 @app.get("/auth/check")
 def auth_check(request: Request):
     token = request.cookies.get("session_token")
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
         telegram_id = payload["telegram_id"]
@@ -163,9 +155,9 @@ def auth_check(request: Request):
         "wallet": user.wallet
     }
 
-# -------------------
+# -----------------------
 # Logout
-# -------------------
+# -----------------------
 @app.post("/auth/logout")
 def logout(response: Response):
     response.delete_cookie("session_token")
@@ -261,6 +253,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 
