@@ -12,9 +12,9 @@ import jwt, datetime
 # -------------------
 app = FastAPI()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test.db")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "your-telegram-bot-token")
-SECRET_KEY = os.getenv("SECRET_KEY", "change-this-key")  # для HMAC проверки Telegram
+DATABASE_URL = os.getenv("DATABASE_URL")
+#BOT_TOKEN = os.getenv("BOT_TOKEN", "your-telegram-bot-token")
+SECRET_KEY = os.getenv("SECRET_KEY")  # для HMAC проверки Telegram
 SESSION_EXPIRY = 7 * 24 * 60 * 60  # 7 дней в секундах
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
@@ -439,5 +439,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 '''
+
 
 
