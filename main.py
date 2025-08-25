@@ -1,36 +1,35 @@
-from fastapi import FastAPI, HTTPException, Request, Response, Depends
+from fastapi import FastAPI, Request, Response, HTTPException, Depends, Cookie
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, BigInteger
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
-import os
-import jwt
-import datetime
-import hashlib
-import hmac
-import time
-from typing import Optional
+import os, hashlib, hmac, time, secrets
 
 # -------------------
-# App Configuration
+# App setup
 # -------------------
 app = FastAPI()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-this-in-production")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "your-telegram-bot-token")  # Add this to your .env
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test.db")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "your-telegram-bot-token")
+SECRET_KEY = os.getenv("SECRET_KEY", "change-this-key")  # для HMAC проверки Telegram
+SESSION_EXPIRY = 7 * 24 * 60 * 60  # 7 дней в секундах
 
-# SQLAlchemy setup
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 
-security = HTTPBearer(auto_error=False)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # в проде лучше указать домен
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # -------------------
-# Database Model
+# Models
 # -------------------
 class User(Base):
     __tablename__ = "users"
@@ -45,43 +44,22 @@ class User(Base):
 Base.metadata.create_all(bind=engine)
 
 # -------------------
-# Pydantic Models
+# Telegram auth model
 # -------------------
 class TelegramAuthData(BaseModel):
     id: int
     first_name: str
-    username: Optional[str] = None
-    last_name: Optional[str] = None
-    photo_url: Optional[str] = None
+    username: str | None = None
+    last_name: str | None = None
+    photo_url: str | None = None
     auth_date: int
     hash: str
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str
+# -------------------
+# In-memory sessions
+# -------------------
+sessions = {}  # session_id -> {"telegram_id": ..., "expires": ...}
 
-class UserResponse(BaseModel):
-    telegram_id: int
-    username: Optional[str] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    photo_url: Optional[str] = None
-    wallet: Optional[str] = None
-
-# -------------------
-# CORS Configuration
-# -------------------
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Change to your domain in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# -------------------
-# Database Dependency
-# -------------------
 def get_db():
     db = SessionLocal()
     try:
@@ -90,115 +68,59 @@ def get_db():
         db.close()
 
 # -------------------
-# JWT Helper Functions
+# Telegram verification
 # -------------------
-def create_access_token(telegram_id: int, expires_delta: Optional[datetime.timedelta] = None):
-    if expires_delta:
-        expire = datetime.datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.datetime.utcnow() + datetime.timedelta(days=7)
-    
-    payload = {
-        "sub": str(telegram_id),
-        "exp": expire,
-        "iat": datetime.datetime.utcnow()
-    }
-    
-    token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-    return token
-
-def verify_token(token: str):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        telegram_id = int(payload.get("sub"))
-        return telegram_id
-    except jwt.ExpiredSignatureError:
-        return None
-    except (jwt.JWTError, ValueError):
-        return None
-
 def verify_telegram_auth(auth_data: dict, bot_token: str) -> bool:
-    """Verify Telegram widget authentication data"""
-    check_hash = auth_data.pop('hash', None)
+    check_hash = auth_data.pop("hash", None)
     if not check_hash:
         return False
-    
-    # Create data check string
-    data_check_arr = []
-    for key, value in sorted(auth_data.items()):
-        data_check_arr.append(f"{key}={value}")
-    data_check_string = '\n'.join(data_check_arr)
-    
-    # Create secret key from bot token
+
+    data_check_arr = [f"{k}={v}" for k, v in sorted(auth_data.items())]
+    data_check_string = "\n".join(data_check_arr)
     secret_key = hashlib.sha256(bot_token.encode()).digest()
-    
-    # Calculate hash
-    calculated_hash = hmac.new(
-        secret_key, 
-        data_check_string.encode(), 
-        hashlib.sha256
-    ).hexdigest()
-    
-    # Verify hash matches
+    calculated_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+
     if calculated_hash != check_hash:
         return False
-    
-    # Check auth_date (should be within 1 day)
-    auth_date = auth_data.get('auth_date', 0)
-    current_time = int(time.time())
-    if current_time - auth_date > 86400:  # 24 hours
+
+    if int(time.time()) - auth_data.get("auth_date", 0) > 86400:
         return False
-    
+
     return True
 
 # -------------------
-# Authentication Dependency
+# Session helpers
 # -------------------
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-):
-    if not credentials:
-        raise HTTPException(
-            status_code=401, 
-            detail="Authentication required"
-        )
-    
-    telegram_id = verify_token(credentials.credentials)
-    if not telegram_id:
-        raise HTTPException(
-            status_code=401, 
-            detail="Invalid or expired token"
-        )
-    
-    user = db.query(User).filter(User.telegram_id == telegram_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    return user
+def create_session(telegram_id: int) -> str:
+    session_id = secrets.token_hex(16)
+    sessions[session_id] = {
+        "telegram_id": telegram_id,
+        "expires": int(time.time()) + SESSION_EXPIRY
+    }
+    return session_id
+
+def get_user_by_session(session_id: str | None, db: Session) -> User | None:
+    if not session_id:
+        return None
+    session = sessions.get(session_id)
+    if not session:
+        return None
+    if session["expires"] < int(time.time()):
+        sessions.pop(session_id)
+        return None
+    return db.query(User).filter(User.telegram_id == session["telegram_id"]).first()
 
 # -------------------
-# API Endpoints
+# Endpoints
 # -------------------
-@app.post("/auth/telegram", response_model=dict)
-def telegram_login(auth_data: TelegramAuthData, db: Session = Depends(get_db)):
-    """Login with Telegram widget data"""
-    
-    # Convert to dict for verification (without hash for verification)
+@app.post("/auth/telegram")
+def telegram_login(auth_data: TelegramAuthData, response: Response, db: Session = Depends(get_db)):
     auth_dict = auth_data.dict()
-    
-    # Verify Telegram authentication
     if not verify_telegram_auth(auth_dict.copy(), BOT_TOKEN):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid Telegram authentication data"
-        )
-    
-    # Check if user exists
+        raise HTTPException(status_code=401, detail="Invalid Telegram authentication")
+
     user = db.query(User).filter(User.telegram_id == auth_data.id).first()
-    
     if not user:
-        # Create new user
         user = User(
             telegram_id=auth_data.id,
             username=auth_data.username,
@@ -210,124 +132,55 @@ def telegram_login(auth_data: TelegramAuthData, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
     else:
-        # Update existing user info
+        # обновляем данные
         user.username = auth_data.username
         user.first_name = auth_data.first_name
         user.last_name = auth_data.last_name
         user.photo_url = auth_data.photo_url
         db.commit()
-    
-    # Create JWT token
-    access_token = create_access_token(user.telegram_id)
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": {
-            "telegram_id": user.telegram_id,
-            "username": user.username,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "photo_url": user.photo_url,
-            "wallet": user.wallet
-        }
-    }
 
-@app.get("/auth/me", response_model=UserResponse)
-def get_current_user_info(current_user: User = Depends(get_current_user)):
-    """Get current authenticated user information"""
-    return UserResponse(
-        telegram_id=current_user.telegram_id,
-        username=current_user.username,
-        first_name=current_user.first_name,
-        last_name=current_user.last_name,
-        photo_url=current_user.photo_url,
-        wallet=current_user.wallet
+    session_id = create_session(user.telegram_id)
+    response.set_cookie(
+        key="session_id",
+        value=session_id,
+        max_age=SESSION_EXPIRY,
+        httponly=True,
+        secure=False,  # ставь True на HTTPS
+        samesite="lax"
     )
 
-@app.post("/auth/refresh", response_model=Token)
-def refresh_token(current_user: User = Depends(get_current_user)):
-    """Refresh the access token"""
-    access_token = create_access_token(current_user.telegram_id)
-    return {"access_token": access_token, "token_type": "bearer"}
-
-@app.put("/user/wallet")
-def update_wallet(
-    wallet_data: dict,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Update user's wallet address"""
-    wallet = wallet_data.get("wallet", "").strip()
-    
-    if not wallet:
-        raise HTTPException(status_code=400, detail="Wallet address is required")
-    
-    # Basic TON wallet validation
-    if not (wallet.startswith("EQ") or wallet.startswith("UQ")):
-        raise HTTPException(
-            status_code=400, 
-            detail="Invalid TON wallet format! Address should start with EQ or UQ"
-        )
-    
-    if len(wallet) < 40:
-        raise HTTPException(
-            status_code=400, 
-            detail="TON wallet address is too short!"
-        )
-    
-    current_user.wallet = wallet
-    db.commit()
-    
-    return {"message": "Wallet updated successfully", "wallet": wallet}
-
-@app.get("/user/{telegram_id}")
-def get_user_by_id(telegram_id: int, db: Session = Depends(get_db)):
-    """Get user by Telegram ID - for backward compatibility"""
-    user = db.query(User).filter(User.telegram_id == telegram_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    return {
+    return {"message": "Login successful", "user": {
         "telegram_id": user.telegram_id,
         "username": user.username,
         "first_name": user.first_name,
         "last_name": user.last_name,
-        "photo_url": user.photo_url,
-        "wallet": user.wallet
-    }
+        "photo_url": user.photo_url
+    }}
+
+@app.get("/auth/me")
+def get_me(session_id: str | None = Cookie(default=None), db: Session = Depends(get_db)):
+    user = get_user_by_session(session_id, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"telegram_id": user.telegram_id, "username": user.username, "first_name": user.first_name, "last_name": user.last_name, "photo_url": user.photo_url}
 
 @app.post("/submit-score")
-def submit_score(
-    score_data: dict,
-    current_user: User = Depends(get_current_user)
-):
-    """Submit game score - protected endpoint"""
-    # Here you can add your score validation and storage logic
+def submit_score(score_data: dict, session_id: str | None = Cookie(default=None), db: Session = Depends(get_db)):
+    user = get_user_by_session(session_id, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    # здесь можно сохранять очки в базу
     game = score_data.get("game")
     score = score_data.get("score")
-    
-    if not game or score is None:
-        raise HTTPException(status_code=400, detail="Game and score are required")
-    
-    # Add your score processing logic here
-    return {
-        "message": "Score submitted successfully",
-        "game": game,
-        "score": score,
-        "user_id": current_user.telegram_id
-    }
+    return {"message": "Score submitted", "user_id": user.telegram_id, "game": game, "score": score}
 
-# -------------------
-# Health Check
-# -------------------
-@app.get("/")
-def root():
-    return {"message": "CryptoVerse API is running!"}
+@app.post("/logout")
+def logout(response: Response, session_id: str | None = Cookie(default=None)):
+    if session_id and session_id in sessions:
+        sessions.pop(session_id)
+    response.delete_cookie("session_id")
+    return {"message": "Logged out successfully"}
 
-@app.get("/health")
-def health():
-    return {"status": "healthy"}
 '''
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -585,3 +438,4 @@ app.add_middleware(
     allow_headers=["*"],
 )
 '''
+
