@@ -5,6 +5,7 @@ from sqlalchemy import create_engine, Column, Integer, String, BigInteger
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import os, hashlib, hmac, time, secrets
+import jwt, datetime
 
 # -------------------
 # App setup
@@ -438,4 +439,5 @@ app.add_middleware(
     allow_headers=["*"],
 )
 '''
+
 
