@@ -115,49 +115,24 @@ def get_user_by_session(session_id: str | None, db: Session) -> User | None:
 # Endpoints
 # -------------------
 @app.post("/auth/telegram")
-def telegram_login(auth_data: TelegramAuthData, response: Response, db: Session = Depends(get_db)):
-    auth_dict = auth_data.dict()
-    if not verify_telegram_auth(auth_dict.copy(), BOT_TOKEN):
-        raise HTTPException(status_code=401, detail="Invalid Telegram authentication")
+async def telegram_login(user: TelegramUser):
+    try:
+        payload = {
+            "sub": str(user.id),
+            "first_name": user.first_name,
+            "username": user.username,
+            "exp": datetime.utcnow() + timedelta(hours=24)  # токен на 24 часа
+        }
+        token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-    user = db.query(User).filter(User.telegram_id == auth_data.id).first()
-    if not user:
-        user = User(
-            telegram_id=auth_data.id,
-            username=auth_data.username,
-            first_name=auth_data.first_name,
-            last_name=auth_data.last_name,
-            photo_url=auth_data.photo_url
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-    else:
-        # обновляем данные
-        user.username = auth_data.username
-        user.first_name = auth_data.first_name
-        user.last_name = auth_data.last_name
-        user.photo_url = auth_data.photo_url
-        db.commit()
-
-    session_id = create_session(user.telegram_id)
-    response.set_cookie(
-        key="session_id",
-        value=session_id,
-        max_age=SESSION_EXPIRY,
-        httponly=True,
-        secure=False,  # ставь True на HTTPS
-        samesite="lax"
-    )
-
-    return {"message": "Login successful", "user": {
-        "telegram_id": user.telegram_id,
-        "username": user.username,
-        "first_name": user.first_name,
-        "last_name": user.last_name,
-        "photo_url": user.photo_url
-    }}
-
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "user": user.dict()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+        
 @app.get("/auth/me")
 def get_me(session_id: str | None = Cookie(default=None), db: Session = Depends(get_db)):
     user = get_user_by_session(session_id, db)
@@ -439,6 +414,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 '''
+
 
 
 
