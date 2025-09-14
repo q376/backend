@@ -99,3 +99,20 @@ def get_user(telegram_id: int):
         "last_name": user.last_name,
         "photo_url": user.photo_url
     }
+
+class WalletUpdate(BaseModel):
+    telegram_id: int
+    wallet: str
+
+@app.post("/save_wallet")
+def save_wallet(data: WalletUpdate):
+    db = SessionLocal()
+    user = db.query(User).filter(User.telegram_id == data.telegram_id).first()
+    if not user:
+        db.close()
+        raise HTTPException(status_code=404, detail="User not found")
+    user.wallet = data.wallet
+    db.commit()
+    db.refresh(user)
+    db.close()
+    return {"message": "Wallet updated", "wallet": user.wallet}
