@@ -23,8 +23,7 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
-    wallet_raw = Column(String, unique=True, index=True, nullable=False)
-    wallet_friendly = Column(String, unique=True, index=True, nullable=False)
+    wallet_address = Column(String, unique=True, index=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     total_earned = Column(Float, default=0.0)
     tournaments_won = Column(Integer, default=0)
@@ -36,8 +35,7 @@ Base.metadata.create_all(bind=engine)
 # Pydantic схемы
 # -------------------
 class WalletAuth(BaseModel):
-    wallet_raw: str
-    wallet_friendly: str
+    wallet_address: str
 
 class ScoreSubmission(BaseModel):
     wallet: str
@@ -543,4 +541,5 @@ def health_check():
         }
     }
 '''
+
 
