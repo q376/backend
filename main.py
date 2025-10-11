@@ -62,40 +62,25 @@ app.add_middleware(
 # -------------------
 @app.post("/auth/wallet")
 def wallet_login(auth: WalletAuth):
-    """
-    Authenticate or register user by TON wallet address
-    """
     db = SessionLocal()
     
-    # IMPROVED VALIDATION - Accept user-friendly TON addresses
-    wallet_address = auth.wallet_address.strip()
+    # Берём raw и user-friendly
+    wallet_raw = auth.wallet_raw.strip()
+    wallet_user_friendly = auth.wallet_user_friendly.strip()
     
-    if not wallet_address:
+    # Проверка
+    if not wallet_raw or not wallet_user_friendly:
         db.close()
-        raise HTTPException(status_code=400, detail="Wallet address cannot be empty")
+        raise HTTPException(status_code=400, detail="Wallet addresses cannot be empty")
     
-    if len(wallet_address) < 20:
-        db.close()
-        raise HTTPException(status_code=400, detail="Wallet address too short")
-    
-    # Check if it's in user-friendly format (preferred)
-    is_user_friendly = wallet_address.startswith('EQ') or wallet_address.startswith('UQ')
-    
-    # Log for debugging
-    print(f"🔍 Received wallet address: {wallet_address}")
-    print(f"📍 Format: {'User-friendly (EQ/UQ)' if is_user_friendly else 'Raw format'}")
-    
-    # Warn if not in user-friendly format but still accept it
-    if not is_user_friendly:
-        print(f"⚠️ Warning: Address not in user-friendly format. Consider converting.")
-    
-    # Check if user exists
-    existing_user = db.query(User).filter(User.wallet_address == wallet_address).first()
+    # Проверка существующего пользователя по raw адресу
+    existing_user = db.query(User).filter(User.wallet_raw == wallet_raw).first()
     
     if not existing_user:
-        # Register new user
+        # Регистрация нового
         new_user = User(
-            wallet_address=wallet_address,
+            wallet_raw=wallet_raw,
+            wallet_user_friendly=wallet_user_friendly,
             created_at=datetime.utcnow(),
             total_earned=0.0,
             tournaments_won=0,
@@ -104,37 +89,12 @@ def wallet_login(auth: WalletAuth):
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
-        
-        print(f"✅ New user registered: {wallet_address}")
-        
-        response = {
-            "message": "User registered",
-            "user": {
-                "wallet_address": new_user.wallet_address,
-                "created_at": new_user.created_at.isoformat(),
-                "total_earned": new_user.total_earned,
-                "tournaments_won": new_user.tournaments_won,
-                "games_played": new_user.games_played
-            }
-        }
         db.close()
-        return response
-    else:
-        # Return existing user
-        print(f"✅ Existing user logged in: {wallet_address}")
-        
-        response = {
-            "message": "Login successful",
-            "user": {
-                "wallet_address": existing_user.wallet_address,
-                "created_at": existing_user.created_at.isoformat(),
-                "total_earned": existing_user.total_earned,
-                "tournaments_won": existing_user.tournaments_won,
-                "games_played": existing_user.games_played
-            }
-        }
-        db.close()
-        return response
+        return {"message": "User registered", "user": new_user.__dict__}
+    
+    db.close()
+    return {"message": "Login successful", "user": existing_user.__dict__}
+
 
 # -------------------
 # Get user by wallet address
@@ -543,6 +503,7 @@ def health_check():
         }
     }
 '''
+
 
 
 
