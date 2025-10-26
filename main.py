@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql import func
 from datetime import datetime
 import os
 
@@ -30,6 +31,15 @@ class User(Base):
     tournaments_won = Column(Integer, default=0)
     games_played = Column(Integer, default=0)
 
+class GameResult(Base):
+    __tablename__ = "game_results"
+    id = Column(Integer, primary_key=True, index=True)
+    wallet_raw = Column(String(64), ForeignKey("users.wallet_raw", ondelete="CASCADE"))
+    wallet_user_friendly = Column(String, nullable=False)
+    game_name = Column(String(64), nullable=False)
+    score = Column(Float, nullable=False)
+    played_at = Column(DateTime(timezone=True), server_default=func.now())
+
 Base.metadata.create_all(bind=engine)
 
 # -------------------
@@ -45,6 +55,19 @@ class ScoreSubmission(BaseModel):
     score: int
     gameData: dict
     timestamp: int
+
+class GameResultCreate(BaseModel):
+    wallet_raw: str
+    wallet_user_friendly: str
+    game_name: str
+    score: float
+
+class GameResultResponse(GameResultCreate):
+    id: int
+    played_at: datetime
+
+    class Config:
+        orm_mode = True
 
 # -------------------
 # CORS
@@ -130,7 +153,7 @@ def submit_score(submission: ScoreSubmission):
     db = SessionLocal()
     
     # Find user by wallet
-    user = db.query(User).filter(User.wallet_address == submission.wallet).first()
+    user = db.query(User).filter(User.wallet_raw == submission.wallet).first()
     
     if not user:
         db.close()
@@ -196,10 +219,11 @@ def update_earnings(wallet_address: str, amount: float, tournament_win: bool = F
 # -------------------
 # Get leaderboard
 # -------------------
+"""
 @app.get("/leaderboard")
 def get_leaderboard(limit: int = 10):
     """
-    Get top earners leaderboard
+    #Get top earners leaderboard
     """
     db = SessionLocal()
     
@@ -218,6 +242,32 @@ def get_leaderboard(limit: int = 10):
     
     db.close()
     return {"leaderboard": leaderboard}
+"""
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@app.post("/game/result", response_model=schemas.GameResultResponse)
+def save_game_result(result: schemas.GameResultCreate, db: Session = Depends(get_db)):
+    # Проверяем, что пользователь существует
+    user = db.query(models.User).filter(models.User.wallet_raw == result.wallet_raw).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    new_result = models.GameResult(**result.dict())
+    db.add(new_result)
+
+    # Можно инкрементировать количество сыгранных игр
+    user.games_played += 1
+
+    db.commit()
+    db.refresh(new_result)
+
+    return new_result
 
 # -------------------
 # Health check
@@ -234,3 +284,4 @@ def health_check():
             "leaderboard": "/leaderboard"
         }
     }
+
