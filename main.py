@@ -225,8 +225,8 @@ def get_db():
     finally:
         db.close()
 
-@app.post("/game/result", response_model=schemas.GameResultResponse)
-def save_game_result(result: schemas.GameResultCreate, db: Session = Depends(get_db)):
+@app.post("/game/result", response_model=GameResultResponse)
+def save_game_result(result: GameResultCreate, db: Session = Depends(get_db)):
     # Проверяем, что пользователь существует
     user = db.query(models.User).filter(models.User.wallet_raw == result.wallet_raw).first()
     if not user:
@@ -258,6 +258,7 @@ def health_check():
             "leaderboard": "/leaderboard"
         }
     }
+
 
 
 
