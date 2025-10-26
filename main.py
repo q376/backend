@@ -1,4 +1,4 @@
-import schemas
+from schemas import WalletAuth, GameResultCreate, GameResultResponse, ScoreSubmission
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -42,10 +42,6 @@ class GameResult(Base):
     played_at = Column(DateTime(timezone=True), server_default=func.now())
 
 Base.metadata.create_all(bind=engine)
-
-# -------------------
-# Pydantic схемы
-# -------------------
 
 # -------------------
 # CORS
@@ -262,6 +258,7 @@ def health_check():
             "leaderboard": "/leaderboard"
         }
     }
+
 
 
 
