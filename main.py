@@ -222,9 +222,9 @@ def update_earnings(wallet_address: str, amount: float, tournament_win: bool = F
 """
 @app.get("/leaderboard")
 def get_leaderboard(limit: int = 10):
-    """
-    #Get top earners leaderboard
-    """
+"""
+#Get top earners leaderboard
+"""
     db = SessionLocal()
     
     top_users = db.query(User).order_by(User.total_earned.desc()).limit(limit).all()
@@ -284,4 +284,5 @@ def health_check():
             "leaderboard": "/leaderboard"
         }
     }
+
 
