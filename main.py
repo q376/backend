@@ -1,3 +1,4 @@
+import schemas
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -45,29 +46,6 @@ Base.metadata.create_all(bind=engine)
 # -------------------
 # Pydantic схемы
 # -------------------
-class WalletAuth(BaseModel):
-    wallet_raw: str
-    wallet_user_friendly: str
-
-class ScoreSubmission(BaseModel):
-    wallet: str
-    game: str
-    score: int
-    gameData: dict
-    timestamp: int
-
-class GameResultCreate(BaseModel):
-    wallet_raw: str
-    wallet_user_friendly: str
-    game_name: str
-    score: float
-
-class GameResultResponse(GameResultCreate):
-    id: int
-    played_at: datetime
-
-    class Config:
-        orm_mode = True
 
 # -------------------
 # CORS
@@ -284,6 +262,7 @@ def health_check():
             "leaderboard": "/leaderboard"
         }
     }
+
 
 
 
