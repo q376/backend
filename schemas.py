@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+"""from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional, Dict, Any
 
@@ -28,8 +28,8 @@ class GameResultResponse(GameResultCreate):
 
     class Config:
         from_attributes = True  # Updated for Pydantic v2 (was orm_mode)
-
 """
+
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -56,4 +56,3 @@ class GameResultResponse(GameResultCreate):
 
     class Config:
         orm_mode = True
-"""
